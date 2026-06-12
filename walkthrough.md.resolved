@@ -1,0 +1,185 @@
+# QAPilot Login Page — Selenium Test Suite
+## Walkthrough & Results
+
+---
+
+## 🧪 Test Run Summary
+
+| Metric | Value |
+|---|---|
+| **Target URL** | https://qa-test-manager.netlify.app/ |
+| **App Name** | QAPilot (Test Case Manager) |
+| **Backend Auth** | Supabase Auth (email-confirmation flow) |
+| **Total Tests** | **30** |
+| **Passed** | ✅ **30** |
+| **Failed** | ❌ **0** |
+| **Runtime** | ~8m 42s |
+| **Browser** | Google Chrome (headed) |
+| **Framework** | Python 3.14 + Selenium 4 + Pytest 8 |
+
+---
+
+## 📁 Project Structure
+
+```
+qa_tests/
+├── conftest.py                    # Fixtures: WebDriver setup/teardown, screenshot on fail
+├── pytest.ini                     # Pytest config: markers, reporting, logging
+├── requirements.txt               # selenium, webdriver-manager, pytest, pytest-html
+├── run_tests.py                   # CLI runner (--headless, --suite flags)
+│
+├── pages/
+│   ├── __init__.py
+│   └── login_page.py              # Page Object Model (POM) — all locators/actions
+│
+├── utils/
+│   ├── __init__.py
+│   └── helpers.py                 # Credentials, ExpectedMessages, utility functions
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_ui_elements.py        # Suite 1: UI element validation (11 tests)
+│   ├── test_positive_login.py     # Suite 2: Positive/happy-path login (6 tests)
+│   └── test_negative_login.py     # Suite 3: Negative/security/boundary (13 tests)
+│
+├── screenshots/                   # Auto-captured screenshots per test
+└── reports/
+    └── final_report.html          # Full pytest-html report
+```
+
+---
+
+## 🔍 Key Discoveries During Exploration
+
+| Finding | Detail |
+|---|---|
+| Login is **modal-based** | Clicking "Sign In" nav button opens an overlay — not a separate page |
+| Inputs have **no id/name** | Located by `type='email'` and `type='password'` |
+| Email placeholder | `you@example.com` |
+| Password placeholder | `••••••••` |
+| Auth backend | **Supabase** — two distinct error messages |
+| Valid creds signal | `"Email not confirmed"` (password correct, email unverified) |
+| Invalid creds signal | `"Invalid login credentials"` |
+| No rate-limiting | 5 rapid failures — no lockout triggered |
+
+---
+
+## ✅ Suite 1 — UI Element Tests (11/11 Passed)
+
+| Test ID | Description | Result |
+|---|---|---|
+| TC_UI_001 | Page loads, URL correct | ✅ PASS |
+| TC_UI_002 | Browser title = `"QAPilot"` | ✅ PASS |
+| TC_UI_003 | Hero heading text present | ✅ PASS — *"Manage Your Test Cases With Confidence"* |
+| TC_UI_004 | Email input present in modal | ✅ PASS |
+| TC_UI_005 | Password input present in modal | ✅ PASS |
+| TC_UI_006 | Password field is **masked** (`type='password'`) | ✅ PASS |
+| TC_UI_007 | Submit "Sign In" button present & clickable | ✅ PASS |
+| TC_UI_008 | Email placeholder = `you@example.com` | ✅ PASS |
+| TC_UI_009 | Password placeholder = `••••••••` | ✅ PASS |
+| TC_UI_010 | "Forgot password?" link present | ✅ PASS |
+| TC_UI_011 | "Sign Up" tab present in modal | ✅ PASS |
+
+---
+
+## ✅ Suite 2 — Positive Login Tests (6/6 Passed)
+
+> **Context:** QAPilot uses Supabase Auth with email confirmation.
+> Correct password → `"Email not confirmed"` | Wrong password → `"Invalid login credentials"`
+
+| Test ID | Description | Result | Finding |
+|---|---|---|---|
+| TC_POS_001 | Valid credentials → distinct server response | ✅ PASS | `"Email not confirmed"` ≠ `"Invalid"` |
+| TC_POS_002 | Server distinguishes valid vs wrong password | ✅ PASS | Two different responses confirmed |
+| TC_POS_003 | Email case-insensitive (`ADMIN@QAPILOT.COM`) | ✅ PASS | App normalises to lowercase ✅ |
+| TC_POS_004 | Whitespace trimmed around email | ✅ PASS | `"  admin@qapilot.com  "` recognised ✅ |
+| TC_POS_005 | Fields clearable between entries | ✅ PASS | No sticky-state issues |
+| TC_POS_006 | Invalid creds produce standard error baseline | ✅ PASS | `"Invalid login credentials"` confirmed |
+
+---
+
+## ✅ Suite 3 — Negative / Security Tests (13/13 Passed)
+
+| Test ID | Description | Result | Finding |
+|---|---|---|---|
+| TC_NEG_001 | Both fields empty → browser validation | ✅ PASS | *"Please fill out this field."* |
+| TC_NEG_002 | Email empty, password filled → rejected | ✅ PASS | Browser HTML5 validation fires |
+| TC_NEG_003 | Email filled, password empty → rejected | ✅ PASS | Browser HTML5 validation fires |
+| TC_NEG_004 | Invalid email + invalid password | ✅ PASS | `"Invalid login credentials"` |
+| TC_NEG_005 | Valid email + **wrong** password | ✅ PASS | `"Invalid login credentials"` |
+| TC_NEG_006 | Non-existent email + valid password | ✅ PASS | `"Invalid login credentials"` |
+| TC_NEG_007 | Error message quality (no stack traces) | ✅ PASS | Clean message, no leakage |
+| TC_NEG_008 | **SQL injection** payload | ✅ PASS | Safely rejected, no server crash |
+| TC_NEG_009 | **XSS** `<script>alert()` in email | ✅ PASS | No JS execution detected |
+| TC_NEG_010 | 300-char input (boundary / DoS) | ✅ PASS | Handled gracefully |
+| TC_NEG_011 | Whitespace-only credentials | ✅ PASS | Rejected — browser validation |
+| TC_NEG_012 | Special characters (`!@#$%^&*()`) | ✅ PASS | Handled gracefully |
+| TC_NEG_013 | **Brute-force**: 5 rapid attempts | ✅ PASS | All rejected, no lockout ⚠️ |
+
+---
+
+## 📋 QA Findings & Security Recommendations
+
+### 🟡 Informational Findings
+
+> [!NOTE]
+> **No Rate Limiting / Account Lockout** (TC_NEG_013)
+> 
+> 5 consecutive failed login attempts were made with no lockout, CAPTCHA, or delay.
+> **Recommendation:** Implement rate limiting (e.g., max 5 attempts per IP per minute) or a CAPTCHA challenge after 3 failures.
+
+> [!NOTE]
+> **Email Confirmation Required for Login** (TC_POS_001)
+>
+> The app uses Supabase Auth with mandatory email verification. New registrations cannot log in until the email is confirmed. This is expected Supabase behaviour but should be surfaced with a clearer UI message like *"Please check your inbox to confirm your email before logging in."*
+
+> [!NOTE]
+> **Generic Error Message** (TC_NEG_007)
+>
+> The app correctly returns a single generic message `"Invalid login credentials"` for both wrong email and wrong password. This is **excellent** for security as it prevents user enumeration. ✅
+
+### 🟢 Positive Security Findings
+
+- ✅ **Password is masked** — no shoulder-surfing risk
+- ✅ **SQL injection safely rejected** — no auth bypass or server crash
+- ✅ **XSS payload not executed** — no script injection vulnerability
+- ✅ **No stack traces leaked** in error messages
+- ✅ **Generic errors** prevent user enumeration attacks
+- ✅ **Email is case-normalised** — consistent UX
+
+---
+
+## 🚀 How to Run
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run all 30 tests (headed — browser visible)
+cd qa_tests
+python run_tests.py
+
+# Run headless (CI-friendly)
+python run_tests.py --headless
+
+# Run a specific suite
+python run_tests.py --suite ui
+python run_tests.py --suite positive
+python run_tests.py --suite negative
+
+# Run directly with pytest
+python -m pytest tests/ -v -s
+```
+
+---
+
+## 📊 HTML Report
+
+An interactive HTML report is generated at:
+`qa_tests/reports/final_report.html`
+
+Open it in any browser to see:
+- Individual test statuses with pass/fail indicators
+- Captured `print()` output for each test
+- Full tracebacks for any failing tests
+- Duration per test
